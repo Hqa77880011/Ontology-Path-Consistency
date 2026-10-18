@@ -54,7 +54,7 @@ python -m opc plot --inputs runs/main/opc results/opc --output figures
 
 `model.pt` contains model parameters, configuration and method identity. `history.jsonl` contains measured training/validation loss and epoch time. Evaluation writes `predictions.npz` and `metrics.json`. Plotting creates loss curves and metric comparisons from supplied run directories.
 
-Leaf accuracy, macro F1/ECE, per-path mean/worst accuracy and local PCD. Cross-run path metrics require identical ordered test examples across the path-specific checkpoints.
+Leaf accuracy, macro F1/ECE, per-path mean/worst accuracy and local PCD. Cross-run path metrics require identical ordered test examples across the path-specific checkpoints. A common endpoint test set has no historical/current block pair, so local PCD is unavailable (null); cross-path OPV and JS are computed by path_metrics instead of reporting an artificial zero.
 
 ## Implementation conventions
 
@@ -75,7 +75,7 @@ python -m opc.pack --manifest data/manifest.jsonl --output data/raw.npz --channe
 python -m opc.cifar --output data/raw.npz
 ```
 
-This downloads the author dataset through TorchVision, reserves 10% of its training images for validation, and preserves the original test set. It writes fine/coarse labels, source IDs and task metadata. Paired/audited transformation fields and ontology constraints must be added from the registered pair/ontology protocol before using those objectives.
+This downloads the author dataset through TorchVision, reserves 10% of its training images for validation, and preserves the original test set. It writes fine/coarse labels, source IDs and task metadata. To register ontology edits, pass an existing x/y/group/split NPZ and a JSON partition of leaf IDs to `python -m opc.protocol --source data/raw.npz --blocks configs/blocks.json --output data/protocol.npz`. The new protocol module creates historical leaf masks, stage IDs and opposite split paths. The finite default below needs no CIFAR download.
 
 ## Endpoint path comparison
 
@@ -88,3 +88,21 @@ Every prediction file must use the same ordered endpoint test set. This reports 
 Inference timing runs the deployment forward pass separately from calibration, commutation and other evaluator diagnostics, after one warmup. Batch P50/P95 and examples/s retain the configured batch size. MAC/FLOP counts cover Conv/Linear/GRU multiply-adds; process RSS includes the dataset and Python runtime.
 
 Ontology training requires stage IDs and optionally path IDs. The custom driver follows stages in order, retains a reservoir of immutable historical leaf-set constraints and validates only the current ontology stage. path_id chooses one registered edit path; repeat with matched data/budget for path comparison. epochs_per_stage and replay_size bound optimization and memory.
+
+## Registered compact reproduction setting
+
+Six leaf classes in eight-dimensional features, 300 independent objects, two coarse blocks and opposite legal split orders terminating at the same six-leaf endpoint. A width-32 MLP, three stages, ten epochs/stage and reservoir size 64 keep the full marginal-label and virtual AB/BA mechanism.
+
+Run from the repository root after installation. The following commands use the registered setting; they are provided for execution and have not been run as part of the source review.
+
+```bash
+python -m opc.protocol --objects 300 --seed 17 --output data/protocol.npz
+python -m opc prepare --source data/protocol.npz --output data/reproduce --seed 17
+python -m opc train --config configs/reproduce.json --data data/reproduce --path-id 0 --output runs/path_a
+python -m opc train --config configs/reproduce.json --data data/reproduce --path-id 1 --output runs/path_b
+python -m opc evaluate --checkpoint runs/path_a/opc/model.pt --data data/reproduce/test.npz --output results/path_a
+python -m opc evaluate --checkpoint runs/path_b/opc/model.pt --data data/reproduce/test.npz --output results/path_b
+python -m opc.path_metrics --predictions results/path_a/predictions.npz results/path_b/predictions.npz --labels data/reproduce/test.npz --output results/path_metrics.json
+```
+
+This setting needs no external dataset or pretrained weights. Generated inputs and declared fault/shift laws define the finite task; reported quantities retain that provenance.

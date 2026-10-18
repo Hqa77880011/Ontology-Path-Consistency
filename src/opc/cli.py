@@ -319,6 +319,7 @@ def main():
         item.add_argument("--config", required=True)
         item.add_argument("--data", required=True)
         item.add_argument("--output", required=True)
+        item.add_argument("--path-id", type=int, help="Registered ontology path to train")
         item.add_argument(
             "--methods",
             nargs="+",
@@ -337,6 +338,8 @@ def main():
         prepare(args.source, args.output, args.seed)
     elif args.command in ("train", "suite"):
         cfg = json.loads(Path(args.config).read_text(encoding="utf-8"))
+        if args.path_id is not None:
+            cfg["path_id"] = args.path_id
         for method in args.methods:
             train(cfg, args.data, Path(args.output) / method, method)
     elif args.command == "evaluate":

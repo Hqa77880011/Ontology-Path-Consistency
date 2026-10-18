@@ -82,12 +82,15 @@ def loss(model, batch, cfg):
 
 def predict(model, batch, cfg, calibration=None):
     defect = path_defect(model, batch, cfg)
-    return {"logits": model(batch["x"]), "pcd": defect.expand(len(batch["x"]), 1)}
+    available = batch["replay"].bool().any() & ~batch["replay"].bool().all()
+    return {"logits": model(batch["x"]), "pcd": defect.expand(len(batch["x"]), 1),
+            "pcd_available": available.expand(len(batch["x"]), 1)}
 
 
 def metrics(prediction, data, cfg):
     result = classification_metrics(prediction["logits"], data["y"])
-    result["pcd"] = float(prediction["pcd"].mean())
+    available = prediction["pcd_available"].ravel().astype(bool)
+    result["pcd"] = float(prediction["pcd"].ravel()[available].mean()) if available.any() else None
     if "path" in data:
         values = []
         for path in np.unique(data["path"]):
@@ -120,6 +123,8 @@ def fit(model, train, validation, cfg, output):
     selected = np.ones(len(train), dtype=bool)
     if "path" in source:
         selected &= source["path"] == cfg["path_id"]
+    if not selected.any():
+        raise ValueError("No examples belong to the registered training path")
     stages = sorted(np.unique(source["stage"][selected]).tolist())
     memory = []
     seen = 0
